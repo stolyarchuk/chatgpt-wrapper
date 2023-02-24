@@ -1,18 +1,19 @@
 import atexit
 import base64
 import json
-from json.decoder import JSONDecodeError
+import logging
 import operator
+import shutil
 import time
 import uuid
-import os
-import logging
-import shutil
 from functools import reduce
+from json.decoder import JSONDecodeError
 from time import sleep
-from typing import Optional
-from playwright.sync_api import sync_playwright
+from typing import Any, Optional
+
 from playwright._impl._api_structures import ProxySettings
+from playwright._impl._fetch import APIResponse
+from playwright.sync_api import sync_playwright
 
 RENDER_MODELS = {
     "default": "text-davinci-002-render-sha",
@@ -21,6 +22,7 @@ RENDER_MODELS = {
 }
 
 log_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+
 
 class ChatGPT:
     """
@@ -33,7 +35,7 @@ class ChatGPT:
     eof_div_id = "chatgpt-wrapper-conversation-stream-data-eof"
     session_div_id = "chatgpt-wrapper-session-data"
 
-    def __init__(self, headless: bool = True, browser="firefox", model="default", timeout=60, debug_log=None, proxy: Optional[ProxySettings] = None):
+    def __init__(self, headless: bool = True, browser: str = "firefox", model: str = "default", timeout: int = 60, debug_log: Optional[str] = None, proxy: Optional[ProxySettings] = None):
         self.log = self._set_logging(debug_log)
         self.log.debug("ChatGPT initialized")
         self.play = sync_playwright().start()
@@ -63,14 +65,14 @@ class ChatGPT:
             self.page = self.browser.new_page()
         self._start_browser()
         self.parent_message_id = str(uuid.uuid4())
-        self.conversation_id = None
+        self.conversation_id: str = None
         self.conversation_title_set = None
-        self.session = None
+        self.session: dict[str, str] = dict()
         self.model = model
         self.timeout = timeout
         atexit.register(self._cleanup)
 
-    def _set_logging(self, debug_log):
+    def _set_logging(self, debug_log: Optional[str]) -> logging.Logger:
         logger = logging.getLogger(self.__class__.__name__)
         logger.setLevel(logging.DEBUG)
         log_console_handler = logging.StreamHandler()
@@ -127,36 +129,36 @@ class ChatGPT:
         self.page.evaluate(f"document.getElementById('{self.stream_div_id}').remove()")
         self.page.evaluate(f"document.getElementById('{self.eof_div_id}').remove()")
 
-    def _api_request_build_headers(self, custom_headers={}):
+    def _api_request_build_headers(self, custom_headers: dict[str, str] = {}) -> dict[str, str]:
         headers = {
             "Authorization": "Bearer %s" % self.session["accessToken"],
         }
         headers.update(custom_headers)
         return headers
 
-    def _process_api_response(self, url, response, method="GET"):
+    def _process_api_response(self, url: str, response: APIResponse | Any, method: str = "GET"):
         self.log.debug(f"{method} {url} response, OK: {response.ok}, TEXT: {response.text()}")
         json = None
         if response.ok:
             try:
-                json = response.json()
+                json = response.json()  # FIXME: json method is couroutine
             except JSONDecodeError:
                 pass
         if not response.ok or not json:
             self.log.debug(f"{response.status} {response.status_text} {response.headers}")
         return response.ok, json, response
 
-    def _api_get_request(self, url, query_params={}, custom_headers={}):
+    def _api_get_request(self, url: str, query_params: dict[str, str | float | bool] = {}, custom_headers: dict[str, str] = {}):
         headers = self._api_request_build_headers(custom_headers)
         response = self.page.request.get(url, headers=headers, params=query_params)
         return self._process_api_response(url, response)
 
-    def _api_post_request(self, url, data={}, custom_headers={}):
+    def _api_post_request(self, url: str, data: dict[str, str] = {}, custom_headers: dict[str, str] = {}):
         headers = self._api_request_build_headers(custom_headers)
         response = self.page.request.post(url, headers=headers, data=data)
         return self._process_api_response(url, response, method="POST")
 
-    def _api_patch_request(self, url, data={}, custom_headers={}):
+    def _api_patch_request(self, url: str, data: dict[str, str] = {}, custom_headers: dict[str, str] = {}):
         headers = self._api_request_build_headers(custom_headers)
         response = self.page.request.patch(url, headers=headers, data=data)
         return self._process_api_response(url, response, method="PATCH")
@@ -169,7 +171,7 @@ class ChatGPT:
             "message_id": self.parent_message_id,
             "model": RENDER_MODELS[self.model],
         }
-        ok, json, response = self._api_post_request(url, data)
+        ok, _json, _response = self._api_post_request(url, data)
         if ok:
             # TODO: Do we want to do anything with the title we got back?
             # response_data = response.json()
@@ -177,8 +179,8 @@ class ChatGPT:
         else:
             self.log.warning("Failed to set title")
 
-    def delete_conversation(self, uuid=None):
-        if self.session is None:
+    def delete_conversation(self, uuid: Optional[str] = None):
+        if not self.session:
             self.refresh_session()
         if not uuid and not self.conversation_id:
             return
@@ -187,23 +189,23 @@ class ChatGPT:
         data = {
             "is_visible": False,
         }
-        ok, json, response = self._api_patch_request(url, data)
+        ok, json, _response = self._api_patch_request(url, data)
         if ok:
             return json
         else:
             self.log.warning("Failed to delete conversation")
 
-    def get_history(self, limit=20, offset=0):
-        if self.session is None:
+    def get_history(self, limit: int = 20, offset: int = 0) -> Any:
+        if not self.session:
             self.refresh_session()
         url = "https://chat.openai.com/backend-api/conversations"
         query_params = {
             "offset": offset,
             "limit": limit,
         }
-        ok, json, response = self._api_get_request(url, query_params)
+        ok, json, _response = self._api_get_request(url, query_params)
         if ok:
-            history = {}
+            history: dict[str, Any] = {}
             for item in json["items"]:
                 history[item["id"]] = item
             return history
@@ -211,7 +213,7 @@ class ChatGPT:
             self.log.warning("Failed to get history")
 
     def ask_stream(self, prompt: str):
-        if self.session is None:
+        if not self.session:
             self.refresh_session()
 
         new_message_id = str(uuid.uuid4())
@@ -306,7 +308,7 @@ class ChatGPT:
             full_event_message = None
 
             try:
-                event_raw = base64.b64decode(conversation_datas[0].inner_html())
+                event_raw: bytes = base64.b64decode(conversation_datas[0].inner_html())
                 if len(event_raw) > 0:
                     event = json.loads(event_raw)
                     if event is not None:
