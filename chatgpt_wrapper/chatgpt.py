@@ -35,7 +35,13 @@ class ChatGPT:
     eof_div_id = "chatgpt-wrapper-conversation-stream-data-eof"
     session_div_id = "chatgpt-wrapper-session-data"
 
-    def __init__(self, headless: bool = True, browser: str = "firefox", model: str = "default", timeout: int = 60, debug_log: Optional[str] = None, proxy: Optional[ProxySettings] = None):
+    def __init__(self,
+                 headless: bool = True,
+                 browser: str = "firefox",
+                 model: str = "default",
+                 timeout: int = 60,
+                 debug_log: Optional[str] = None,
+                 proxy: Optional[ProxySettings] = None):
         self.log = self._set_logging(debug_log)
         self.log.debug("ChatGPT initialized")
         self.play = sync_playwright().start()
@@ -96,8 +102,7 @@ class ChatGPT:
         self.play.stop()
 
     def refresh_session(self):
-        self.page.evaluate(
-            """
+        self.page.evaluate("""
         const xhr = new XMLHttpRequest();
         xhr.open('GET', 'https://chat.openai.com/api/auth/session');
         xhr.onload = () => {
@@ -109,10 +114,7 @@ class ChatGPT:
           }
         };
         xhr.send();
-        """.replace(
-                "SESSION_DIV_ID", self.session_div_id
-            )
-        )
+        """.replace("SESSION_DIV_ID", self.session_div_id))
 
         while True:
             session_datas = self.page.query_selector_all(f"div#{self.session_div_id}")
@@ -148,7 +150,10 @@ class ChatGPT:
             self.log.debug(f"{response.status} {response.status_text} {response.headers}")
         return response.ok, json, response
 
-    def _api_get_request(self, url: str, query_params: dict[str, str | float | bool] = {}, custom_headers: dict[str, str] = {}):
+    def _api_get_request(self,
+                         url: str,
+                         query_params: dict[str, str | float | bool] = {},
+                         custom_headers: dict[str, str] = {}):
         headers = self._api_request_build_headers(custom_headers)
         response = self.page.request.get(url, headers=headers, params=query_params)
         return self._process_api_response(url, response)
@@ -219,29 +224,27 @@ class ChatGPT:
         new_message_id = str(uuid.uuid4())
 
         if "accessToken" not in self.session:
-            yield (
-                "Your ChatGPT session is not usable.\n"
-                "* Run this program with the `install` parameter and log in to ChatGPT.\n"
-                "* If you think you are already logged in, try running the `session` command."
-            )
+            yield ("Your ChatGPT session is not usable.\n"
+                   "* Run this program with the `install` parameter and log in to ChatGPT.\n"
+                   "* If you think you are already logged in, try running the `session` command.")
             return
 
         request = {
-            "messages": [
-                {
-                    "id": new_message_id,
-                    "role": "user",
-                    "content": {"content_type": "text", "parts": [prompt]},
-                }
-            ],
+            "messages": [{
+                "id": new_message_id,
+                "role": "user",
+                "content": {
+                    "content_type": "text",
+                    "parts": [prompt]
+                },
+            }],
             "model": RENDER_MODELS[self.model],
             "conversation_id": self.conversation_id,
             "parent_message_id": self.parent_message_id,
             "action": "next",
         }
 
-        code = (
-            """
+        code = ("""
             const stream_div = document.createElement('DIV');
             stream_div.id = "STREAM_DIV_ID";
             document.body.appendChild(stream_div);
@@ -284,13 +287,9 @@ class ChatGPT:
               }
             };
             xhr.send(JSON.stringify(REQUEST_JSON));
-            """.replace(
-                "BEARER_TOKEN", self.session["accessToken"]
-            )
-            .replace("REQUEST_JSON", json.dumps(request))
-            .replace("STREAM_DIV_ID", self.stream_div_id)
-            .replace("EOF_DIV_ID", self.eof_div_id)
-        )
+            """.replace("BEARER_TOKEN",
+                        self.session["accessToken"]).replace("REQUEST_JSON", json.dumps(request)).replace(
+                            "STREAM_DIV_ID", self.stream_div_id).replace("EOF_DIV_ID", self.eof_div_id))
 
         self.page.evaluate(code)
 
@@ -299,9 +298,7 @@ class ChatGPT:
         while True:
             eof_datas = self.page.query_selector_all(f"div#{self.eof_div_id}")
 
-            conversation_datas = self.page.query_selector_all(
-                f"div#{self.stream_div_id}"
-            )
+            conversation_datas = self.page.query_selector_all(f"div#{self.stream_div_id}")
             if len(conversation_datas) == 0:
                 continue
 
@@ -314,16 +311,12 @@ class ChatGPT:
                     if event is not None:
                         self.parent_message_id = event["message"]["id"]
                         self.conversation_id = event["conversation_id"]
-                        full_event_message = "\n".join(
-                            event["message"]["content"]["parts"]
-                        )
+                        full_event_message = "\n".join(event["message"]["content"]["parts"])
             except Exception:
-                yield (
-                    "Failed to read response from ChatGPT.  Tips:\n"
-                    " * Try again.  ChatGPT can be flaky.\n"
-                    " * Use the `session` command to refresh your session, and then try again.\n"
-                    " * Restart the program in the `install` mode and make sure you are logged in."
-                )
+                yield ("Failed to read response from ChatGPT.  Tips:\n"
+                       " * Try again.  ChatGPT can be flaky.\n"
+                       " * Use the `session` command to refresh your session, and then try again.\n"
+                       " * Restart the program in the `install` mode and make sure you are logged in.")
                 break
 
             if full_event_message is not None:
@@ -333,7 +326,8 @@ class ChatGPT:
 
             # if we saw the eof signal, this was the last event we
             # should process and we are done
-            if len(eof_datas) > 0 or (((time.time() - start_time) > self.timeout) and full_event_message is None):
+            if len(eof_datas) > 0 or (((time.time() - start_time) > self.timeout) and
+                                      full_event_message is None):
                 break
 
             sleep(0.2)
@@ -353,9 +347,8 @@ class ChatGPT:
         """
         response = list(self.ask_stream(message))
         return (
-            reduce(operator.add, response)
-            if len(response) > 0
-            else "Unusable response produced, maybe login session expired. Try 'pkill firefox' and 'chatgpt install'"
+            reduce(operator.add, response) if len(response) > 0 else
+            "Unusable response produced, maybe login session expired. Try 'pkill firefox' and 'chatgpt install'"
         )
 
     def new_conversation(self):
