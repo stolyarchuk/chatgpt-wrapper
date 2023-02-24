@@ -71,7 +71,7 @@ class ChatGPT:
             self.page = self.browser.new_page()
         self._start_browser()
         self.parent_message_id = str(uuid.uuid4())
-        self.conversation_id: str = None
+        self.conversation_id: Optional[str] = None
         self.conversation_title_set = None
         self.session: dict[str, str] = dict()
         self.model = model
