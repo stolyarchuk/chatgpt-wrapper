@@ -143,7 +143,7 @@ class ChatGPT:
         json = None
         if response.ok:
             try:
-                json = response.json()  # FIXME: json method is couroutine
+                json: Any = response.json()
             except JSONDecodeError:
                 pass
         if not response.ok or not json:
@@ -152,18 +152,18 @@ class ChatGPT:
 
     def _api_get_request(self,
                          url: str,
-                         query_params: dict[str, str | float | bool] = {},
-                         custom_headers: dict[str, str] = {}):
+                         query_params: dict[str, Any] = {},
+                         custom_headers: dict[str, Any] = {}):
         headers = self._api_request_build_headers(custom_headers)
         response = self.page.request.get(url, headers=headers, params=query_params)
         return self._process_api_response(url, response)
 
-    def _api_post_request(self, url: str, data: dict[str, str] = {}, custom_headers: dict[str, str] = {}):
+    def _api_post_request(self, url: str, data: dict[str, Any] = {}, custom_headers: dict[str, Any] = {}):
         headers = self._api_request_build_headers(custom_headers)
         response = self.page.request.post(url, headers=headers, data=data)
         return self._process_api_response(url, response, method="POST")
 
-    def _api_patch_request(self, url: str, data: dict[str, str] = {}, custom_headers: dict[str, str] = {}):
+    def _api_patch_request(self, url: str, data: dict[str, Any] = {}, custom_headers: dict[str, Any] = {}):
         headers = self._api_request_build_headers(custom_headers)
         response = self.page.request.patch(url, headers=headers, data=data)
         return self._process_api_response(url, response, method="PATCH")
