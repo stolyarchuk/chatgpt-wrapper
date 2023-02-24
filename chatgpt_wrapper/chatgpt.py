@@ -3,6 +3,7 @@ import base64
 import json
 import logging
 import operator
+import re
 import shutil
 import time
 import uuid
@@ -22,6 +23,17 @@ RENDER_MODELS = {
 }
 
 log_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+
+
+def remove_json_invalid_control_chars(s: str):
+    """
+    Removes invalid control characters from the given string.
+    """
+    # Define a regex pattern that matches invalid control characters
+    pattern = re.compile(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F\n]')
+
+    # Use the pattern to remove invalid control characters from the string
+    return pattern.sub('', s)
 
 
 class ChatGPT:
@@ -78,7 +90,63 @@ class ChatGPT:
         self.timeout = timeout
         atexit.register(self._cleanup)
 
+    def switch_to_conversation(self, conversation_id: str):
+        self.conversation_id = conversation_id
+        conversation_info = self.get_conversation_info(conversation_id)
+
+        if conversation_info:
+            self.parent_message_id = conversation_info["current_node"]
+
+    def get_conversation_info(self, conversation_id: str) -> Optional[dict[str, Any]]:
+        if not self.session:
+            self.refresh_session()
+
+        if "accessToken" not in self.session:
+            print("Your ChatGPT session is not usable.\n"
+                  "* Run this program with the `install` parameter and log in to ChatGPT.\n"
+                  "* If you think you are already logged in, try running the `session` command.")
+            return
+
+        conversation_div_id = "chatgpt-wrapper-conversation-info-data"
+
+        code = ("""
+            const xhr = new XMLHttpRequest();
+            xhr.open('GET', 'https://chat.openai.com/backend-api/conversation/CONVERSATION_ID');
+            xhr.setRequestHeader('Accept', 'text/event-stream');
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.setRequestHeader('Authorization', 'Bearer BEARER_TOKEN');
+            xhr.responseType = 'stream';
+            xhr.onload = function() {
+                console.log('get conversation info status:'+xhr.status);
+                if(xhr.status == 200) {
+                    var conversation_info_div = document.createElement('DIV');
+                    conversation_info_div.id = "CONVERSATION_INFO_DIV_ID";
+                    conversation_info_div.innerHTML = xhr.responseText;
+                    document.body.appendChild(conversation_info_div);
+                }
+            };
+            xhr.send();
+            """.replace("BEARER_TOKEN", self.session["accessToken"]).replace(
+            "CONVERSATION_INFO_DIV_ID", conversation_div_id).replace("CONVERSATION_ID", conversation_id))
+        self.page.evaluate(code)
+        conversation_info = None
+
+        while True:
+            conversation_info_datas = self.page.query_selector_all(f"div#{conversation_div_id}")
+            if len(conversation_info_datas) > 0:
+                try:
+                    conversation_info = json.loads(
+                        remove_json_invalid_control_chars(conversation_info_datas[0].inner_text()))
+                    break
+                except json.JSONDecodeError as e:
+                    print("load conversation info JSONDecodeError:", e)
+            sleep(0.2)
+        self.page.evaluate(f"document.getElementById('{conversation_div_id}').remove()")
+
+        return conversation_info
+
     def _set_logging(self, debug_log: Optional[str]) -> logging.Logger:
+
         logger = logging.getLogger(self.__class__.__name__)
         logger.setLevel(logging.DEBUG)
         log_console_handler = logging.StreamHandler()

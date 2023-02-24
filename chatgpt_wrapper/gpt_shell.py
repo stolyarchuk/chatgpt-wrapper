@@ -1,11 +1,11 @@
 import cmd
+import datetime
 import os
 import platform
-import sys
-import datetime
-import subprocess
-import string
 import readline
+import string
+import subprocess
+import sys
 
 from rich.console import Console
 from rich.markdown import Markdown
@@ -51,7 +51,8 @@ class GPTShell(cmd.Cmd):
         elif line[0] == '?':
             line = 'help ' + line[1:]
         i, n = 0, len(line)
-        while i < n and line[i] in self.identchars: i = i+1
+        while i < n and line[i] in self.identchars:
+            i = i + 1
         cmd, arg = line[:i], line[i:].strip()
         return cmd, arg, line
 
@@ -68,7 +69,7 @@ class GPTShell(cmd.Cmd):
             stripped = len(origline) - len(line)
             begidx = readline.get_begidx() - stripped
             endidx = readline.get_endidx() - stripped
-            if begidx>0:
+            if begidx > 0:
                 cmd, args, line = self.parseline(line)
                 if cmd == '':
                     compfunc = self.command_names
@@ -130,8 +131,7 @@ class GPTShell(cmd.Cmd):
     def _write_log_context(self):
         if self.logfile is not None:
             self.logfile.write(
-                f"## context {self.chatgpt.conversation_id}:{self.chatgpt.parent_message_id}\n"
-            )
+                f"## context {self.chatgpt.conversation_id}:{self.chatgpt.parent_message_id}\n")
             self.logfile.flush()
 
     def _parse_conversation_ids(self, string):
@@ -179,9 +179,7 @@ class GPTShell(cmd.Cmd):
     def do_stream(self, _):
         "`!stream` toggles between streaming mode (streams the raw response from ChatGPT) and markdown rendering (which cannot stream)."
         self.stream = not self.stream
-        self._print_markdown(
-            f"* Streaming mode is now {'enabled' if self.stream else 'disabled'}."
-        )
+        self._print_markdown(f"* Streaming mode is now {'enabled' if self.stream else 'disabled'}.")
 
     def do_new(self, _):
         "`!new` starts a new conversation."
@@ -217,7 +215,11 @@ class GPTShell(cmd.Cmd):
         history = self.chatgpt.get_history()
         if history:
             history_list = [h for h in history.values()]
-            self._print_markdown("## Recent history:\n\n%s" % "\n".join(["1. %s: %s (%s)" % (datetime.datetime.strptime(h['create_time'], "%Y-%m-%dT%H:%M:%S.%f").strftime("%Y-%m-%d %H:%M"), h['title'], h['id']) for h in history_list]))
+            self._print_markdown("## Recent history:\n\n%s" % "\n".join([
+                "1. %s: %s (%s)" % (datetime.datetime.strptime(
+                    h['create_time'], "%Y-%m-%dT%H:%M:%S.%f").strftime("%Y-%m-%d %H:%M"), h['title'], h['id'])
+                for h in history_list
+            ]))
 
     def do_nav(self, arg):
         "`!nav` lets you navigate to a past point in the conversation. Example: `nav 2`"
@@ -233,9 +235,7 @@ class GPTShell(cmd.Cmd):
             return
 
         if msg_id not in self.message_map:
-            self._print_markdown(
-                "The argument to `nav` contained an unknown prompt number."
-            )
+            self._print_markdown("The argument to `nav` contained an unknown prompt number.")
             return
 
         (
@@ -244,9 +244,7 @@ class GPTShell(cmd.Cmd):
         ) = self.message_map[msg_id]
         self._update_message_map()
         self._write_log_context()
-        self._print_markdown(
-            f"* Prompt {self.prompt_number} will use the context from prompt {arg}."
-        )
+        self._print_markdown(f"* Prompt {self.prompt_number} will use the context from prompt {arg}.")
 
     def do_exit(self, _):
         "`!exit` closes the program."
@@ -286,11 +284,8 @@ class GPTShell(cmd.Cmd):
     def do_session(self, _):
         "`!session` refreshes your session information.  This can resolve errors under certain scenarios."
         self.chatgpt.refresh_session()
-        usable = (
-            "The session appears to be usable."
-            if "accessToken" in self.chatgpt.session
-            else "The session is not usable.  Try `install` mode."
-        )
+        usable = ("The session appears to be usable." if "accessToken" in self.chatgpt.session else
+                  "The session is not usable.  Try `install` mode.")
         self._print_markdown(f"* Session information refreshed.  {usable}")
 
     def do_read(self, _):
@@ -325,7 +320,8 @@ class GPTShell(cmd.Cmd):
             process = subprocess.Popen(['vipe'], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
         except FileNotFoundError:
             self._print_markdown(
-                "Failed to execute `vipe`, must be installed and in path. Install package `moreutils`. `brew install moreutils` on macOS and `apt install moreutils` on Ubuntu.")
+                "Failed to execute `vipe`, must be installed and in path. Install package `moreutils`. `brew install moreutils` on macOS and `apt install moreutils` on Ubuntu."
+            )
             return
         process.stdin.write(args.encode())
         process.stdin.close()
@@ -333,6 +329,10 @@ class GPTShell(cmd.Cmd):
         output = process.stdout.read().decode()
         print(output)
         self.default(output)
+
+    def do_chat(self, arg):
+        "`!chat` switch to the chat by the follow uuid"
+        self.chatgpt.switch_to_conversation(arg)
 
     def do_file(self, arg):
         "`!file` sends a prompt read from the named file.  Example: `file myprompt.txt`"
@@ -373,9 +373,7 @@ class GPTShell(cmd.Cmd):
             self._print_markdown("Invalid parameter to `context`.")
             return
         self._print_markdown("* Loaded specified context.")
-        self.chatgpt.conversation_id = (
-            conversation_id if conversation_id != "None" else None
-        )
+        self.chatgpt.conversation_id = (conversation_id if conversation_id != "None" else None)
         self.chatgpt.parent_message_id = parent_message_id
         self._update_message_map()
         self._write_log_context()
@@ -433,13 +431,13 @@ class GPTShell(cmd.Cmd):
                     prevname = name
                     cmd = name[3:]
                     if cmd in help:
-                        cmds_doc.append("!"+cmd)
+                        cmds_doc.append("!" + cmd)
                         del help[cmd]
                     elif getattr(self, name).__doc__:
-                        cmds_doc.append("!"+cmd)
+                        cmds_doc.append("!" + cmd)
                     else:
-                        cmds_undoc.append("!"+cmd)
+                        cmds_undoc.append("!" + cmd)
             self.stdout.write("%s\n" % str(self.doc_leader))
-            self.print_topics(self.doc_header,   cmds_doc,   15, 80)
-            self.print_topics(self.misc_header,  list(help.keys()), 15, 80)
+            self.print_topics(self.doc_header, cmds_doc, 15, 80)
+            self.print_topics(self.misc_header, list(help.keys()), 15, 80)
             self.print_topics(self.undoc_header, cmds_undoc, 15, 80)
