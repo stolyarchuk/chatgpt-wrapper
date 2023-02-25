@@ -50,6 +50,7 @@ class ChatGPT:
     def __init__(self,
                  headless: bool = True,
                  browser: str = "firefox",
+                 browser_uuid: Optional[str] = None,
                  model: str = "default",
                  timeout: int = 60,
                  debug_log: Optional[str] = None,
@@ -57,20 +58,35 @@ class ChatGPT:
         self.log = self._set_logging(debug_log)
         self.log.debug("ChatGPT initialized")
         self.play = sync_playwright().start()
+
         try:
             playbrowser = getattr(self.play, browser)
         except Exception:
             print(f"Browser {browser} is invalid, falling back on firefox")
             playbrowser = self.play.firefox
+
+        if browser_uuid is None:
+            self.browser_uuid = str(uuid.uuid4())
+        else:
+            self.browser_uuid = browser_uuid
+
+        self.browser_uuid = '8ed355b5-7df7-4cac-9e28-6d891ea7e997'
+
         try:
             self.browser = playbrowser.launch_persistent_context(
-                user_data_dir="/tmp/playwright",
+                user_data_dir=f"/tmp/playwright-{self.browser_uuid}",
                 headless=headless,
                 proxy=proxy,
             )
         except Exception:
-            self.user_data_dir = f"/tmp/{str(uuid.uuid4())}"
-            shutil.copytree("/tmp/playwright", self.user_data_dir)
+            old_browser_uuid = self.browser_uuid
+            self.browser_uuid = str(uuid.uuid4())
+            self.log.warn("launcing second instance with uuid: %s", self.browser_uuid)
+            self.user_data_dir = f"/tmp/playwright-{self.browser_uuid}"
+            shutil.copytree(f"/tmp/playwright-{old_browser_uuid}",
+                            self.user_data_dir,
+                            symlinks=True,
+                            ignore_dangling_symlinks=True)
             self.browser = playbrowser.launch_persistent_context(
                 user_data_dir=self.user_data_dir,
                 headless=headless,
@@ -81,6 +97,7 @@ class ChatGPT:
             self.page = self.browser.pages[0]
         else:
             self.page = self.browser.new_page()
+            
         self._start_browser()
         self.parent_message_id = str(uuid.uuid4())
         self.conversation_id: Optional[str] = None
@@ -146,7 +163,6 @@ class ChatGPT:
         return conversation_info
 
     def _set_logging(self, debug_log: Optional[str]) -> logging.Logger:
-
         logger = logging.getLogger(self.__class__.__name__)
         logger.setLevel(logging.DEBUG)
         log_console_handler = logging.StreamHandler()
